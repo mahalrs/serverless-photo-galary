@@ -209,6 +209,15 @@ Resources:
             Resource:
             - !Sub arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot-alias/${LexBotId}/${LexBotAliasId}
             - !Sub arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot/${LexBotId}
+      - PolicyName: photosbucket
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: s3:*
+            Resource:
+            - !Sub arn:aws:s3:::${BucketName}
+            - !Sub arn:aws:s3:::${BucketName}/*
 
   CORSLambda:
     Type: AWS::Lambda::Function
