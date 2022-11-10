@@ -34,8 +34,7 @@ def lambda_handler(event, context):
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': '*',
         },
-        'body': json.dumps('Hello from LF2'),
-        'results': results
+        'body': json.dumps({'results': results})
     }
 
 
