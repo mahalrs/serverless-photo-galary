@@ -1,0 +1,897 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create AWS Resources
+
+Parameters:
+  BucketName:
+    Type: String
+
+  GitHubRepo:
+    Type: String
+  
+  GitHubBranch:
+    Type: String
+  
+  GitHubToken:
+    Type: String
+
+  GitHubUser:
+    Type: String
+  
+  LexBotId:
+    Type: String
+  
+  LexBotAliasId:
+    Type: String
+
+Resources:
+  PhotosOpenSearchDomain:
+    Type: AWS::OpenSearchService::Domain
+    Properties:
+      DomainName: photos
+      EngineVersion: OpenSearch_1.3
+      ClusterConfig:
+        InstanceCount: 1
+        InstanceType: t3.small.search
+      EBSOptions:
+        EBSEnabled: true
+        VolumeSize: 10
+        VolumeType: gp3
+      AccessPolicies:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS:
+            - !GetAtt IndexLambdaIAMRole.Arn
+            - !GetAtt SearchLambdaIAMRole.Arn
+          Action: es:ESHttp*
+          Resource:
+            - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/photos/*
+
+  PhotosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      NotificationConfiguration:
+        LambdaConfigurations:
+        - Event: s3:ObjectCreated:Put
+          Function: !GetAtt IndexLambda.Arn
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+            - '*'
+            AllowedMethods:
+            - PUT
+            AllowedOrigins:
+            - '*'
+            Id: corsPutRule
+          - AllowedHeaders:
+            - '*'
+            AllowedMethods:
+            - GET
+            AllowedOrigins:
+            - '*'
+            Id: corsGETRule
+
+  IndexLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: index-photos
+      Runtime: python3.9
+      Timeout: 300
+      Role: !GetAtt IndexLambdaIAMRole.Arn
+      Handler: index.lambda_handler
+      Environment:
+        Variables:
+          PHOTOS_OPENSEARCH_ENDPOINT: !GetAtt PhotosOpenSearchDomain.DomainEndpoint
+      Code:
+        ZipFile: |
+          import json
+          import os
+
+          def lambda_handler(event, context):
+            print("OpenSearch Endpoint", os.environ["PHOTOS_OPENSEARCH_ENDPOINT"])
+            print("Received event: " + json.dumps(event, indent=2))
+            message = 'Hello World! LF1 v2.0'
+            return message
+  
+  IndexLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IndexLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:aws:s3:::${BucketName}
+
+  IndexLambdaIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: IndexLambdaRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: logs:*
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: rekognition
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: rekognition:*
+            Resource: "*"
+      - PolicyName: photosbucket
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: s3:PutBucketNotification
+            Resource:
+            - !Sub arn:aws:s3:::${BucketName}
+            - !Sub arn:aws:s3:::${BucketName}/*
+          - Effect: Allow
+            Action: s3:*
+            Resource:
+            - !Sub arn:aws:s3:::${BucketName}
+            - !Sub arn:aws:s3:::${BucketName}/*
+  
+  SearchLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: search-photos
+      Runtime: python3.9
+      Timeout: 300
+      Role: !GetAtt SearchLambdaIAMRole.Arn
+      Handler: index.lambda_handler
+      Environment:
+        Variables:
+          PHOTOS_OPENSEARCH_ENDPOINT: !GetAtt PhotosOpenSearchDomain.DomainEndpoint
+          LEX_BOT_ID: !Ref LexBotId
+          LEX_BOT_ALIAS_ID: !Ref LexBotAliasId
+      Code:
+        ZipFile: |
+          import json
+          def lambda_handler(event, context):
+            print("Received event: " + json.dumps(event, indent=2))
+            message = 'Hello World! LF2 v2.0'
+            return message
+
+  SearchLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt SearchLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${APIGateway}/*"
+  
+  SearchLambdaIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SearchLambdaRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: logs:*
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: lex
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: "lex:*"
+            Resource:
+            - !Sub arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot-alias/${LexBotId}/${LexBotAliasId}
+            - !Sub arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot/${LexBotId}
+
+  CORSLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: cors-options
+      Runtime: python3.9
+      Timeout: 300
+      Role: !GetAtt CORSLambdaIAMRole.Arn
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: |
+          import json
+          def lambda_handler(event, context):
+            res = {
+              'statusCode': 200,
+              'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Headers': '*',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': '*',
+              },
+              'body': json.dumps('CORS enables...')
+            }
+            return res
+
+  CORSLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt CORSLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${APIGateway}/*"
+  
+  CORSLambdaIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CORSLambdaRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: logs:*
+            Resource: arn:aws:logs:*:*:*
+
+  APIGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: AI Photo Search API
+      Description: API for AI Photo Search application
+      FailOnWarnings: True
+      BinaryMediaTypes:
+        - image/png
+        - image/jpg
+        - image/jpeg
+      EndpointConfiguration:
+        Types:
+        - REGIONAL
+      Body:
+        swagger: '2.0'
+        info:
+          title: AI Photo Search
+          description: 'AI Photo Search application, built during the Cloud and Big Data course at Columbia University.'
+          version: 1.0.0
+        schemes:
+          - https
+        basePath: /v1
+        produces:
+          - application/json
+        paths:
+          /search:
+            get:
+              summary: photo search method
+              description: |
+                This API takes in a search query as a query parameter and returns zero or more photos that match the search query.
+              operationId: searchPhotos
+              parameters:
+                - name: q
+                  in: path
+                  required: true
+                  type: string
+                  description: the string to be searched
+              produces:
+                - application/json
+              responses:
+                '200':
+                  description: search results
+                  schema:
+                    $ref: '#/definitions/SearchResponse'
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                '403':
+                  description: Unauthorized
+                  schema:
+                    $ref: '#/definitions/Error'
+                '500':
+                  description: Unexpected error
+                  schema:
+                    $ref: '#/definitions/Error'
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                responses:
+                  default:
+                    statusCode: 200
+                httpMethod: POST
+                passthroughBehavior: WHEN_NO_MATCH
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SearchLambda.Arn}/invocations"
+            options:
+              consumes:
+              - "application/json"
+              produces:
+              - "application/json"
+              responses:
+                "200":
+                  description: "200 response"
+                  schema:
+                    $ref: "#/definitions/SearchResponse"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: "string"
+                    Access-Control-Allow-Headers:
+                      type: "string"
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                responses:
+                  default:
+                    statusCode: 200
+                httpMethod: POST
+                passthroughBehavior: WHEN_NO_MATCH
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CORSLambda.Arn}/invocations"
+          /upload:
+            put:
+              summary: photo upload method
+              description: |
+                This API takes in the multi-part body sent to it (ex. a photo) and uploads it to an S3 bucket.
+              operationId: uploadPhoto
+              consumes:
+                - image/png
+                - image/jpg
+                - image/jpeg
+              produces:
+                - application/json
+              parameters:
+              - name: objkey
+                in: header
+                required: true
+                type: string
+              - name: x-amz-meta-customLabels
+                in: header
+                required: true
+                type: string
+              responses:
+                '200':
+                  description: S3 PUT operation response
+                  schema:
+                    type: object
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: "string"
+                    Access-Control-Allow-Headers:
+                      type: "string"
+                '403':
+                  description: Unauthorized
+                  schema:
+                    $ref: '#/definitions/Error'
+                '500':
+                  description: Unexpected error
+                  schema:
+                    $ref: '#/definitions/Error'
+              x-amazon-apigateway-integration:
+                type: aws
+                credentials: !GetAtt APIGatewayIAMRole.Arn
+                responses:
+                  default:
+                    statusCode: 200
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'*'"
+                      method.response.header.Access-Control-Allow-Headers: "'*'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                httpMethod: PUT
+                passthroughBehavior: WHEN_NO_MATCH
+                requestParameters:
+                  integration.request.path.key: method.request.header.objkey
+                  integration.request.header.x-amz-meta-customLabels: method.request.header.x-amz-meta-customLabels
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:s3:path/${BucketName}/{key}"
+            options:
+              consumes:
+                - image/png
+                - image/jpg
+                - image/jpeg
+              produces:
+                - application/json
+              parameters:
+              - name: objkey
+                in: header
+                required: true
+                type: string
+              - name: x-amz-meta-customLabels
+                in: header
+                required: true
+                type: string
+              responses:
+                "200":
+                  description: "200 response"
+                  schema:
+                    type: object
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: "string"
+                    Access-Control-Allow-Headers:
+                      type: "string"
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                responses:
+                  default:
+                    statusCode: 200
+                httpMethod: POST
+                passthroughBehavior: WHEN_NO_MATCH
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CORSLambda.Arn}/invocations"
+        definitions:
+          SearchResponse:
+            type: object
+            properties:
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Photo'
+          Photo:
+            type: object
+            properties:
+              url:
+                type: string
+              labels:
+                type: array
+                items:
+                  type: string
+          Error:
+            type: object
+            properties:
+              code:
+                type: integer
+                format: int32
+              message:
+                type: string
+
+  APIGatewayIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: APIGatewayRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - apigateway.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - >-
+          arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+      Policies:
+      - PolicyName: s3put
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: 's3:*'
+            Resource:
+            - !Sub arn:aws:s3:::${BucketName}
+            - !Sub arn:aws:s3:::${BucketName}/*
+
+  APIGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt APIGatewayIAMRole.Arn
+
+  APIGatewayDeployment:
+    DependsOn: APIGatewayAccount
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref APIGateway
+      StageName: dev-v1
+      StageDescription:
+        LoggingLevel: INFO
+        MetricsEnabled: True
+        MethodSettings:
+        - DataTraceEnabled: True
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          ResourcePath: "/*"
+          MetricsEnabled: True
+  
+  ClientBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+  ClientBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      PolicyDocument:
+        Id: PublicWebsitePolicy
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadForGetBucketObjects
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref ClientBucket
+                - /*
+      Bucket: !Ref ClientBucket
+  
+  AssetsBucket:
+    Type: AWS::S3::Bucket
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - codebuild.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Policies:
+        - PolicyName: code-build-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+              - Resource:
+                  - !Sub arn:aws:s3:::${AssetsBucket}/*
+                  - !Sub arn:aws:s3:::${ClientBucket}/*
+                  - !Sub arn:aws:s3:::${ClientBucket}
+                  - !GetAtt IndexLambda.Arn
+                  - !GetAtt SearchLambda.Arn
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - lambda:*
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                  - s3:ListObjects
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - codepipeline.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Policies:
+        - PolicyName: code-pipeline-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Resource:
+                  - !Sub arn:aws:s3:::${AssetsBucket}/*
+                  - !Sub arn:aws:s3:::${ClientBucket}/*
+                  - !Sub arn:aws:s3:::${ClientBucket}
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:ListObjects
+              - Resource:
+                  - arn:aws:s3:::*
+                Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - iam:PassRole
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - lambda:*
+
+  ClientBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: "CODEPIPELINE"
+      Source:
+        Type: "CODEPIPELINE"
+        BuildSpec: |
+          version: 0.1
+          phases:
+            install:
+              commands:
+                - echo Installing packages for client
+                - npm install
+            build:
+              commands:
+                - echo Building client
+                - npm run build
+          artifacts:
+            files:
+              - 'build/**/*'
+      Environment:
+        ComputeType: "BUILD_GENERAL1_SMALL"
+        Image: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+        Type: "LINUX_CONTAINER"
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: PUBLIC_URL
+            Value: '/'
+      Name: !Sub ${AWS::StackName}-build-client
+      ServiceRole: !Ref CodeBuildServiceRole
+
+  DeployClientBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: "CODEPIPELINE"
+      Source:
+        Type: "CODEPIPELINE"
+        BuildSpec: |
+          version: 0.1
+          phases:
+            build:
+              commands:
+                - echo Deploying client to S3
+                - cd ./build && aws s3 cp . s3://$S3_CLIENT_BUCKET --recursive > deploymentResult.txt
+          artifacts:
+            files: build/deploymentResult.txt
+      Environment:
+        ComputeType: "BUILD_GENERAL1_SMALL"
+        Image: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+        Type: "LINUX_CONTAINER"
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: S3_CLIENT_BUCKET
+            Value: !Ref ClientBucket
+      Name: !Sub ${AWS::StackName}-deploy-client
+      ServiceRole: !Ref CodeBuildServiceRole
+
+  ClientPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref AssetsBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: App
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              Configuration:
+                Owner: !Ref GitHubUser
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+              OutputArtifacts:
+                - Name: App
+              RunOrder: 1
+
+        - Name: Build
+          Actions:
+            - Name: ClientBuildStep
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref ClientBuildProject
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: ClientBuild
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: ClientDeployStep
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref DeployClientBuildProject
+              InputArtifacts:
+                - Name: ClientBuild
+              OutputArtifacts:
+                - Name: ClientDeploymentOutput
+              RunOrder: 1
+
+  LambdaBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: "CODEPIPELINE"
+      Source:
+        Type: "CODEPIPELINE"
+        BuildSpec: |
+          version: 0.1
+          phases:
+            install:
+              commands:
+                - echo Installing packages for Index Lambda
+                - cd ./lambda-index && pip install --target ./package requests requests-aws4auth opensearch-py
+                - echo Installing packages for Search Lambda
+                - cd ./lambda-search && pip install --target ./package requests requests-aws4auth opensearch-py
+            build:
+              commands:
+                - echo Building Index Lambda
+                - cd ./lambda-index/package && zip -r ../lambda-index-package.zip .
+                - cd ./lambda-index && zip lambda-index-package.zip index.py
+                - echo Building Search Lambda
+                - cd ./lambda-search/package && zip -r ../lambda-search-package.zip .
+                - cd ./lambda-search && zip lambda-search-package.zip index.py
+          artifacts:
+            files:
+              - 'lambda-index/lambda-index-package.zip'
+              - 'lambda-search/lambda-search-package.zip'
+      Environment:
+        ComputeType: "BUILD_GENERAL1_SMALL"
+        Image: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+        Type: "LINUX_CONTAINER"
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: PUBLIC_URL
+            Value: '/'
+      Name: !Sub ${AWS::StackName}-build-lambda
+      ServiceRole: !Ref CodeBuildServiceRole
+
+  DeployLambdaBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: "CODEPIPELINE"
+      Source:
+        Type: "CODEPIPELINE"
+        BuildSpec: |
+          version: 0.1
+          phases:
+            build:
+              commands:
+                - echo Deploying Index Lambda
+                - cd ./lambda-index && aws lambda update-function-code --function-name $INDEX_LAMBDA --region $AWS_DEFAULT_REGION --zip-file fileb://lambda-index-package.zip
+                - echo Deploying Search Lambda
+                - cd ./lambda-search && aws lambda update-function-code --function-name $SEARCH_LAMBDA --region $AWS_DEFAULT_REGION --zip-file fileb://lambda-search-package.zip
+                - echo 'Done deploying..' > deploymentResultLambda.txt
+          artifacts:
+            files: deploymentResultLambda.txt
+      Environment:
+        ComputeType: "BUILD_GENERAL1_SMALL"
+        Image: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+        Type: "LINUX_CONTAINER"
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: S3_CLIENT_BUCKET
+            Value: !Ref ClientBucket
+          - Name: INDEX_LAMBDA
+            Value: !Ref IndexLambda
+          - Name: SEARCH_LAMBDA
+            Value: !Ref SearchLambda
+      Name: !Sub ${AWS::StackName}-deploy-lambda
+      ServiceRole: !Ref CodeBuildServiceRole
+
+  LambdaPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref AssetsBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: LambdaCode
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              Configuration:
+                Owner: !Ref GitHubUser
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+              OutputArtifacts:
+                - Name: App
+              RunOrder: 1
+
+        - Name: Build
+          Actions:
+            - Name: LambdaBuildStep
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref LambdaBuildProject
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: LambdaBuild
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: LambdaDeployStep
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref DeployLambdaBuildProject
+              InputArtifacts:
+                - Name: LambdaBuild
+              OutputArtifacts:
+                - Name: LambdaDeploymentOutput
+              RunOrder: 1
+
+
+# Outputs:
+#   APIGatewayInvokeURL:
+#     Value: !Sub https://${APIGateway}.execute-api.${AWS::Region}.amazonaws.com/latestv1
