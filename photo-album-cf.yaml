@@ -330,6 +330,8 @@ Resources:
                   description: Unexpected error
                   schema:
                     $ref: '#/definitions/Error'
+              security:
+              - api_key: []
               x-amazon-apigateway-integration:
                 type: aws_proxy
                 responses:
@@ -406,6 +408,8 @@ Resources:
                   description: Unexpected error
                   schema:
                     $ref: '#/definitions/Error'
+              security:
+              - api_key: []
               x-amazon-apigateway-integration:
                 type: aws
                 credentials: !GetAtt APIGatewayIAMRole.Arn
@@ -460,6 +464,11 @@ Resources:
                 passthroughBehavior: WHEN_NO_MATCH
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CORSLambda.Arn}/invocations"
+        securityDefinitions:
+          api_key:
+            type: apiKey
+            name: x-api-key
+            in: header
         definitions:
           SearchResponse:
             type: object
@@ -535,6 +544,41 @@ Resources:
           ResourcePath: "/*"
           MetricsEnabled: True
   
+  APIGatewayKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - APIGatewayDeployment
+      - APIGateway
+    Properties:
+      Name: DevApiKey
+      Description: Cloudformation API Key
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref APIGateway
+          StageName: dev-v1
+  
+  APIGatewayUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn: APIGatewayKey
+    Properties:
+      ApiStages:
+        - ApiId: !Ref APIGateway
+          Stage: dev-v1
+      Quota:
+        Limit: 5000
+        Period: MONTH
+      Throttle:
+        BurstLimit: 20
+        RateLimit: 10
+      UsagePlanName: DevApiKeyUsagePlan
+
+  APIGatewayUsagePlanLink:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref APIGatewayKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref APIGatewayUsagePlan
+
   ClientBucket:
     Type: AWS::S3::Bucket
     Properties:
