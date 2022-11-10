@@ -1,100 +1,128 @@
 import json
 import os
-import requests
 import boto3
 
-from urllib.parse import urlparse
-from urllib.parse import parse_qs
-
-from requests_aws4auth import AWS4Auth
 from opensearchpy import OpenSearch, RequestsHttpConnection
+from requests_aws4auth import AWS4Auth
 
 
-region = 'us-east-1'
-service = 'es'
-credentials = boto3.Session().get_credentials()
-awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, service, session_token=credentials.token)
+REGION = 'us-east-1'
 
-host = os.environ["PHOTOS_OPENSEARCH_ENDPOINT"]
-index = 'photos'
+BOT_ID = os.environ["LEX_BOT_ID"]
+BOT_ALIAS_ID = os.environ["LEX_BOT_ALIAS_ID"]
+BOT_SESSION_ID = 'testuser'
 
-bot_id = os.environ["LEX_BOT_ID"]
-bot_alias_id = os.environ["LEX_BOT_ALIAS_ID"]
-session_id = 'testuser'
+HOST = os.environ["PHOTOS_OPENSEARCH_ENDPOINT"]
+INDEX = 'photos'
 
 
 def lambda_handler(event, context):
     print("Received event: " + json.dumps(event))
-
-    #
-    # TODO: extract query term from request params
     
+    user_query = event['queryStringParameters']['q']
+    query_terms = parse_query(user_query)
     
-    lex_req('dog')
-    query('file')
+    results = []
+    if query_terms:
+        results = get_results(query_terms)
     
-    res = {
+    return {
         'statusCode': 200,
         'headers': {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Headers': 'Content-Type',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': '*',
-            
         },
-        'body': json.dumps('message from LF2')
+        'body': json.dumps('Hello from LF2'),
+        'results': results
     }
-    
-    # res = {
-    #     'statusCode': 200,
-    #     'headers': {'Content-Type': 'application/json'},
-    #     'body': 'mybody',
-    #     'results': [
-    #         {
-    #             'url': 'url-to-s3',
-    #             'labels': [
-    #                 'label1',
-    #                 'label2'
-    #             ]
-    #         }
-    #     ]
-    # }
-    return res
 
 
-def lex_req(msg):
-    client = boto3.client('lexv2-runtime')
+def parse_query(user_query):
+    # client = boto3.client('lexv2-runtime')
+    # res = client.recognize_text(
+    #         botId=BOT_ID,
+    #         botAliasId=BOT_ALIAS_ID,
+    #         localeId='en_US',
+    #         sessionId=BOT_SESSION_ID,
+    #         text=user_query)
     
-    res = client.recognize_text(
-            botId=bot_id,
-            botAliasId=bot_alias_id,
-            localeId='en_US',
-            sessionId=session_id,
-            text=msg)
+    # #
+    # # TODO: parse lex response and return query terms.
+    # #       toknize term to handle plural.
+    # #       return empty list if invalid query.
+    # #
+    # msg_from_lex = res.get('messages', [])
+    # print(res)
+    # print(msg_from_lex)
+    return [user_query]
+
+
+def get_results(query_terms):    
+    hits = []
+    for q in query_terms:
+        hits.extend(query(q))
     
-    msg_from_lex = res.get('messages', [])
-    print(res)
-    print(msg_from_lex)
+    results = []
+    for hit in hits:
+        url = get_s3_url(hit['bucket'], hit['objectKey'])
+        results.append({
+            'url': url,
+            'labels': hit['labels']
+        })
+    return results
 
 
 def query(term):
     q = {
-        "size": 5,
-        "query": {
-            "multi_match": {
-                "query": term
+        'size': 5,
+        'query': {
+            'multi_match': {
+                'query': term,
+                'fields': ['labels', 'objectKey']
             }
         }
     }
+    # q = {
+    #     'size': 5,
+    #     'query': {
+    #         'fuzzy': {
+    #             'labels': {
+    #                 'value': term,
+    #                 'fuzziness': 2,
+    #             }
+    #         }
+    #     }
+    # }
     
-    search = OpenSearch(
-        hosts = [{'host': host, 'port': 443}],
-        http_auth = awsauth,
+    client = OpenSearch(
+        hosts = [{'host': HOST, 'port': 443}],
+        http_auth = get_awsauth(REGION, 'es'),
         use_ssl = True,
         verify_certs = True,
         connection_class = RequestsHttpConnection
     )
     
-    res = search.search(index=index, body=q)
+    res = client.search(index=INDEX, body=q)
     print(res)
-    #return data
+    hits = res['hits']['hits']
+    results = []
+    
+    for hit in hits:
+        results.append(hit['_source'])
+    
+    return results
+
+
+def get_s3_url(bucket, key):
+    client = boto3.client('s3')
+    return client.generate_presigned_url(
+        ClientMethod='get_object',
+        Params={'Bucket': bucket, 'Key': key},
+        ExpiresIn=3600)
+
+
+def get_awsauth(region, service):
+    cred = boto3.Session().get_credentials()
+    return AWS4Auth(cred.access_key, cred.secret_key, region, service, session_token=cred.token)
