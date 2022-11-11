@@ -1,6 +1,5 @@
 import json
 import os
-import itertools
 
 import boto3
 import inflection as inf
@@ -51,19 +50,10 @@ def parse_query(user_query):
             text=user_query)
     print(res)
     
-    keywords = res['messages'][0]['content'].split(' ')
-    keywords = [k.lower() for k in keywords]
-    parsed_keywords = []
-    
-    for i in range(1, len(keywords) + 1):
-        for k in itertools.combinations(keywords, i):
-            parsed_keywords.append(inf.singularize(' '.join(k)))
-    
-    if parsed_keywords[0] == 'notfound' or parsed_keywords[0] == 'NotFound':
-        return []
-    
-    print(parsed_keywords)   
-    return parsed_keywords
+    keywords = res['messages'][0]['content'].split(',')
+    keywords = set([inf.singularize(k.lower()) for k in keywords])
+    print(keywords)
+    return list(keywords)
 
 
 def get_results(query_terms):    
