@@ -39,6 +39,24 @@ window.addEventListener('load', function() {
     var term = document.querySelector('#search').value;
     callSearchApi(term);
   });
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  startRecognition = () => {
+    if (SpeechRecognition !== undefined) {
+      let recognition = new SpeechRecognition();
+  
+      recognition.onresult = (result) => {
+        transcript = result.results[0][0].transcript;
+        console.log(transcript);
+        document.querySelector('#search').value = transcript;
+      };
+  
+      recognition.start();
+    } else {
+      console.log('sorry not supported');
+    }
+  };
 });
 
 function showImages(data) {
@@ -65,6 +83,7 @@ window.addEventListener('load', function() {
     var labels = document.querySelector('#labels').value;
     var file = document.querySelector('#file').files[0];
     var filename = username + '-' + file.name;
+    filename = filename.replace(/[^a-zA-Z]/g, "")
     var filetype = file.type;
 
     console.log(labels);

@@ -18,15 +18,35 @@
     <script src="./assets/js/sdk/lib/apiGatewayCore/apiGatewayClient.js"></script>
     <script src="./assets/js/sdk/lib/apiGatewayCore/simpleHttpClient.js"></script>
     <script src="./assets/js/sdk/lib/apiGatewayCore/utils.js"></script>
-
     <script src="./assets/js/sdk/apigClient.js"></script>
 
-    <!-- <script src="./assets/js/aws-sdk.min.js"></script> -->
     <script src="./assets/js/index.js"></script>
 
     <style>
       body {
         margin: 50px;
+      }
+
+      #search, select {
+        width: 50%;
+        padding: 12px 20px;
+        display: inline-block;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+
+      #labels, #api, #username, select {
+        width: 20%;
+        padding: 6px 10px;
+        display: inline-block;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+
+      #searchdiv {
+        text-align: center;
       }
     </style>
   </head>
@@ -45,10 +65,14 @@
     <label for="labels">Image Labels:</label>
     <input type="text" id="labels" name="Labels">
 
-    <h2>Search</h2>
-    <input type="text" id="search" name="Search">
-    <button id="searchbtn">Search</button>
-    <!-- PUT VOICE button here -->
+    <div id="searchdiv">
+      <h1>Search</h1>
+      <input type="text" id="search" name="Search">
+      </br></br>
+      <button onclick="startRecognition()">Speech to text</button>
+      &nbsp;&nbsp;
+      <button id="searchbtn">Search</button>
+    </div>
 
     </br></br>
     <div id="images"></div>
