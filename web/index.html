@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>AI Photo Galary</title>
+
+    <!-- api gateway generated sdk -->
+    <script src="./assets/js/sdk/lib/axios/dist/axios.standalone.js"></script>
+    <script src="./assets/js/sdk/lib/CryptoJS/rollups/hmac-sha256.js"></script>
+    <script src="./assets/js/sdk/lib/CryptoJS/rollups/sha256.js"></script>
+    <script src="./assets/js/sdk/lib/CryptoJS/components/hmac.js"></script>
+    <script src="./assets/js/sdk/lib/CryptoJS/components/enc-base64.js"></script>
+    <script src="./assets/js/sdk/lib/url-template/url-template.js"></script>
+    <script src="./assets/js/sdk/lib/apiGatewayCore/sigV4Client.js"></script>
+    <script src="./assets/js/sdk/lib/apiGatewayCore/apiGatewayClient.js"></script>
+    <script src="./assets/js/sdk/lib/apiGatewayCore/simpleHttpClient.js"></script>
+    <script src="./assets/js/sdk/lib/apiGatewayCore/utils.js"></script>
+
+    <script src="./assets/js/sdk/apigClient.js"></script>
+
+    <!-- <script src="./assets/js/aws-sdk.min.js"></script> -->
+    <script src="./assets/js/index.js"></script>
+
+    <style>
+      body {
+        margin: 50px;
+      }
+    </style>
+  </head>
+  <body>
+    <label for="api">API Key:</label>
+    <input type="text" id="api" name="API Key">
+    &nbsp;&nbsp;
+    <label for="username">Username:</label>
+    <input type="text" id="username" name="Username">
+    </br></br>
+
+    <h2>Upload Image</h2>
+    <input type="file" id="file" accept="image/jpeg, image/png, image/jpg">
+    <button id="read-file">Upload</button>
+    </br></br>
+    <label for="labels">Image Labels:</label>
+    <input type="text" id="labels" name="Labels">
+
+    <h2>Search</h2>
+    <input type="text" id="search" name="Search">
+    <button id="searchbtn">Search</button>
+    <!-- PUT VOICE button here -->
+
+    </br></br>
+    <div id="images"></div>
+
+    <script>
+      var sdk = apigClientFactory.newClient({});
+    </script>
+  </body>
+</html>
