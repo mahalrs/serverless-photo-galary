@@ -6,13 +6,13 @@ from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 
 
-REGION = 'us-east-1'
-HOST = os.environ["PHOTOS_OPENSEARCH_ENDPOINT"]
-INDEX = 'photos'
+REGION = os.environ['REGION']
+HOST = os.environ['PHOTOS_OPENSEARCH_ENDPOINT']
+INDEX = os.environ['PHOTOS_OPENSEARCH_INDEX']
 
 
 def lambda_handler(event, context):
-    print("Received event: " + json.dumps(event))
+    print('Received event: ' + json.dumps(event))
     
     metadata = get_metadata(event)
     

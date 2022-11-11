@@ -5,6 +5,9 @@ Parameters:
   BucketName:
     Type: String
 
+  PhotosOpenSearchIndex:
+    Type: String
+
   GitHubRepo:
     Type: String
   
@@ -84,6 +87,8 @@ Resources:
       Environment:
         Variables:
           PHOTOS_OPENSEARCH_ENDPOINT: !GetAtt PhotosOpenSearchDomain.DomainEndpoint
+          PHOTOS_OPENSEARCH_INDEX: !Ref PhotosOpenSearchIndex
+          REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           import json
@@ -159,8 +164,10 @@ Resources:
       Environment:
         Variables:
           PHOTOS_OPENSEARCH_ENDPOINT: !GetAtt PhotosOpenSearchDomain.DomainEndpoint
+          PHOTOS_OPENSEARCH_INDEX: !Ref PhotosOpenSearchIndex
           LEX_BOT_ID: !Ref LexBotId
           LEX_BOT_ALIAS_ID: !Ref LexBotAliasId
+          REGION: !Ref AWS::Region
       Code:
         ZipFile: |
           import json

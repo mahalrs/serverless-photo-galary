@@ -6,18 +6,18 @@ from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 
 
-REGION = 'us-east-1'
+REGION = os.environ['REGION']
 
-BOT_ID = os.environ["LEX_BOT_ID"]
-BOT_ALIAS_ID = os.environ["LEX_BOT_ALIAS_ID"]
+BOT_ID = os.environ['LEX_BOT_ID']
+BOT_ALIAS_ID = os.environ['LEX_BOT_ALIAS_ID']
 BOT_SESSION_ID = 'testuser'
 
-HOST = os.environ["PHOTOS_OPENSEARCH_ENDPOINT"]
-INDEX = 'photos'
+HOST = os.environ['PHOTOS_OPENSEARCH_ENDPOINT']
+INDEX = os.environ['PHOTOS_OPENSEARCH_INDEX']
 
 
 def lambda_handler(event, context):
-    print("Received event: " + json.dumps(event))
+    print('Received event: ' + json.dumps(event))
     
     user_query = event['queryStringParameters']['q']
     query_terms = parse_query(user_query)
