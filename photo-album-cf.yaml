@@ -716,14 +716,12 @@ Resources:
             install:
               commands:
                 - echo Installing packages for client
-                - npm install
             build:
               commands:
                 - echo Building client
-                - npm run build
           artifacts:
             files:
-              - 'build/**/*'
+              - 'web/**/*'
       Environment:
         ComputeType: "BUILD_GENERAL1_SMALL"
         Image: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
@@ -749,9 +747,9 @@ Resources:
             build:
               commands:
                 - echo Deploying client to S3
-                - cd ./build && aws s3 cp . s3://$S3_CLIENT_BUCKET --recursive > deploymentResult.txt
+                - cd ./web && aws s3 cp . s3://$S3_CLIENT_BUCKET --recursive > deploymentResult.txt
           artifacts:
-            files: build/deploymentResult.txt
+            files: web/deploymentResult.txt
       Environment:
         ComputeType: "BUILD_GENERAL1_SMALL"
         Image: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
