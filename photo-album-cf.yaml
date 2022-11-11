@@ -831,9 +831,9 @@ Resources:
             install:
               commands:
                 - echo Installing packages for Index Lambda
-                - cd ./lambda-index && pip install --target ./package requests requests-aws4auth opensearch-py
+                - cd ./lambda-index && pip install --target ./package requests requests-aws4auth opensearch-py inflection
                 - echo Installing packages for Search Lambda
-                - cd ./lambda-search && pip install --target ./package requests requests-aws4auth opensearch-py
+                - cd ./lambda-search && pip install --target ./package requests requests-aws4auth opensearch-py inflection
             build:
               commands:
                 - echo Building Index Lambda

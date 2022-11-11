@@ -1,6 +1,9 @@
 import json
 import os
+import itertools
+
 import boto3
+import inflection as inf
 
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
@@ -39,23 +42,28 @@ def lambda_handler(event, context):
 
 
 def parse_query(user_query):
-    # client = boto3.client('lexv2-runtime')
-    # res = client.recognize_text(
-    #         botId=BOT_ID,
-    #         botAliasId=BOT_ALIAS_ID,
-    #         localeId='en_US',
-    #         sessionId=BOT_SESSION_ID,
-    #         text=user_query)
+    client = boto3.client('lexv2-runtime')
+    res = client.recognize_text(
+            botId=BOT_ID,
+            botAliasId=BOT_ALIAS_ID,
+            localeId='en_US',
+            sessionId=BOT_SESSION_ID,
+            text=user_query)
+    print(res)
     
-    # #
-    # # TODO: parse lex response and return query terms.
-    # #       toknize term to handle plural.
-    # #       return empty list if invalid query.
-    # #
-    # msg_from_lex = res.get('messages', [])
-    # print(res)
-    # print(msg_from_lex)
-    return [user_query]
+    keywords = res['messages'][0]['content'].split(' ')
+    keywords = [k.lower() for k in keywords]
+    parsed_keywords = []
+    
+    for i in range(1, len(keywords) + 1):
+        for k in itertools.combinations(keywords, i):
+            parsed_keywords.append(inf.singularize(' '.join(k)))
+    
+    if parsed_keywords[0] == 'notfound' or parsed_keywords[0] == 'NotFound':
+        return []
+    
+    print(parsed_keywords)   
+    return parsed_keywords
 
 
 def get_results(query_terms):    

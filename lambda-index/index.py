@@ -1,6 +1,8 @@
 import json
 import os
+
 import boto3
+import inflection as inf
 
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
@@ -70,7 +72,7 @@ def get_custom_labels(metadata):
     if 'x-amz-meta-customlabels' in metadata['ResponseMetadata']['HTTPHeaders']:
         custom_labels = metadata['ResponseMetadata']['HTTPHeaders']['x-amz-meta-customlabels']
         for label in [x.strip() for x in custom_labels.split(',')]:
-            labels.append(label.lower())
+            labels.append(inf.singularize(label.lower()))
     return labels
 
 
@@ -80,6 +82,6 @@ def get_rekognition_labels(bucket, object_key):
 
     labels = []
     for label in rek_res['Labels']:
-        labels.append(label['Name'].lower())
+        labels.append(inf.singularize(label['Name'].lower()))
 
     return labels
